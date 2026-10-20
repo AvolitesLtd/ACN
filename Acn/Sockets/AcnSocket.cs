@@ -9,6 +9,7 @@ using LXProtocols.Acn.IO;
 using LXProtocols.Acn.Packets.sAcn;
 using System.Diagnostics;
 using System.Threading;
+using System.Buffers;
 
 namespace LXProtocols.Acn.Sockets
 {
@@ -22,6 +23,23 @@ namespace LXProtocols.Acn.Sockets
         public const int SIO_UDP_CONNRESET = -1744830452;
 
         public event UnhandledExceptionEventHandler UnhandledException;
+
+        /// <summary>
+        /// The array pool we use for the buffers used when writing packets.
+        /// </summary>
+        private static readonly ArrayPool<byte> BufferPool = ArrayPool<byte>.Shared;
+
+        /// <summary>
+        /// A simple state class for sent packets.
+        /// </summary>
+        /// <remarks>
+        /// Used so we can return the buffer to the <see cref="BufferPool"/> after use.
+        /// </remarks>
+        private sealed class SendState
+        {
+            public Socket Socket;
+            public byte[] Buffer;
+        }
 
         #region Setup and Initialisation
 
@@ -252,12 +270,48 @@ namespace LXProtocols.Acn.Sockets
             //Set the senders CID.
             packet.Root.SenderId = SenderId;
 
-            MemoryStream data = new MemoryStream();
-            AcnBinaryWriter writer = new AcnBinaryWriter(data);
+            // Rent a buffer that is big enough for our packet
+            byte[] buffer = BufferPool.Rent(1024);
+            try
+            {
+                int length;
+                using (MemoryStream stream = new MemoryStream(buffer, 0, buffer.Length, true, true))
+                using (AcnBinaryWriter writer = new AcnBinaryWriter(stream))
+                {
+                    AcnPacket.WritePacket(packet, writer);
+                    length = (int)stream.Position;
+                }
 
-            AcnPacket.WritePacket(packet, writer);
+                SendState state = new SendState
+                {
+                    Socket = this,
+                    Buffer = buffer
+                };
 
-            BeginSendTo(data.GetBuffer(), 0, (int)data.Length, SocketFlags.None, destination, null, null);
+                BeginSendTo(buffer, 0, length, SocketFlags.None, destination, SendCompleted, state);
+            }
+            catch (Exception ex)
+            {
+                BufferPool.Return(buffer);
+                RaiseUnhandledException(ex);
+            }
+        }
+
+        private void SendCompleted(IAsyncResult ar)
+        {
+            SendState state = (SendState)ar.AsyncState;
+            try
+            {
+                state.Socket.EndSendTo(ar);
+            }
+            catch (Exception ex)
+            {
+                RaiseUnhandledException(ex);
+            }
+            finally
+            {
+                BufferPool.Return(state.Buffer);
+            }
         }
 
         protected void RaiseUnhandledException(Exception ex)
