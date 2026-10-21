@@ -44,6 +44,13 @@ namespace LXProtocols.Acn
 
         #endregion
 
+        protected abstract int GetByteCount();
+
+        public static int GetByteCount(AcnPacket packet, bool tcpTransport)
+        {
+            return packet.Root.GetByteCount(tcpTransport) + packet.GetByteCount();
+        }
+
         #region Read and Write
 
         /// <summary>

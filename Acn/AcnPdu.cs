@@ -87,6 +87,8 @@ namespace LXProtocols.Acn
 
         #endregion
 
+        public abstract int GetByteCount();
+
         #region Read and Write
 
         /// <summary>

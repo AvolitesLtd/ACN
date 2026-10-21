@@ -35,9 +35,9 @@ namespace LXProtocols.Acn
 
         private readonly string packetId;
 
-        public string PacketId 
-        { 
-            get { return packetId; } 
+        public string PacketId
+        {
+            get { return packetId; }
         }
 
         public byte Flags { get; set; }
@@ -50,12 +50,31 @@ namespace LXProtocols.Acn
 
         #endregion
 
+        public int GetByteCount(bool tcpTransport)
+        {
+            //data.WriteUtf8String(PacketId, 12);
+            //data.WriteOctet((short)((Flags << 12) + Length));
+            //data.WriteOctet(ProtocolId);
+            //data.Write(SenderId.ToByteArray());
+            int size = 32;
+            if (!tcpTransport)
+            {
+                //data.WriteOctet(PreambleSize);
+                //data.WriteOctet(PostambleSize);
+                //PDU Block Size
+                //data.BaseStream.Seek(4, System.IO.SeekOrigin.Current);
+                size += 8;
+            }
+
+            return size;
+        }
+
         #region Read and Write
 
         public void ReadData(AcnBinaryReader data, bool tcpTransport)
         {
             //Read Preamble
-            if(!tcpTransport)
+            if (!tcpTransport)
             {
                 PreambleSize = data.ReadOctet2();
                 PostambleSize = data.ReadOctet2();
@@ -65,8 +84,8 @@ namespace LXProtocols.Acn
             if (packetId != PacketId)
                 throw new InvalidPacketException("The packet ID is not a valid ACN packet Id");
 
-            if(tcpTransport)
-             BlockSize = data.ReadOctet4();
+            if (tcpTransport)
+                BlockSize = data.ReadOctet4();
 
             //Read PDU Header
             Length = data.ReadOctet2();
@@ -80,7 +99,7 @@ namespace LXProtocols.Acn
 
         private long lengthPosition = 0;
 
-        public void WriteData(AcnBinaryWriter data,bool tcpTransport)
+        public void WriteData(AcnBinaryWriter data, bool tcpTransport)
         {
             ValidatePacket();
 
@@ -99,7 +118,7 @@ namespace LXProtocols.Acn
             //Save the position of the length so we can come back and fill it in.
             lengthPosition = data.BaseStream.Position;
 
-            data.WriteOctet((short) ((Flags << 12) + Length));
+            data.WriteOctet((short)((Flags << 12) + Length));
             data.WriteOctet(ProtocolId);
             data.Write(SenderId.ToByteArray());
         }
@@ -110,7 +129,7 @@ namespace LXProtocols.Acn
                 throw new InvalidOperationException("You must write the root layer data first before calling WriteLength.");
 
             //Update the Length
-            Length = (int) (data.BaseStream.Position - lengthPosition);
+            Length = (int)(data.BaseStream.Position - lengthPosition);
 
             //Write the updated length to the packet data.
             long savedPosition = data.BaseStream.Position;
@@ -127,12 +146,12 @@ namespace LXProtocols.Acn
             if (PostambleSize != 0)
                 throw new InvalidPacketException("Invalid postamble size for root layer protocol. Postamble must be zero!");
 
-            if(SenderId == Guid.Empty)
-                throw new InvalidPacketException("Invalid sender id for root layer protocol. The sender id is not set!"); 
+            if (SenderId == Guid.Empty)
+                throw new InvalidPacketException("Invalid sender id for root layer protocol. The sender id is not set!");
         }
 
         #endregion
 
-        
+
     }
 }

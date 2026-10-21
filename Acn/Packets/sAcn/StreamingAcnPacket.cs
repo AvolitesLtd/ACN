@@ -34,6 +34,11 @@ namespace LXProtocols.Acn.Packets.sAcn
 
         #endregion
 
+        protected override int GetByteCount()
+        {
+            return Framing.GetByteCount() + Dmx.GetByteCount();
+        }
+
         #region Read/Write
 
         protected override void ReadData(AcnBinaryReader data)

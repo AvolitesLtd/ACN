@@ -271,11 +271,11 @@ namespace LXProtocols.Acn.Sockets
             packet.Root.SenderId = SenderId;
 
             // Rent a buffer that is big enough for our packet
-            byte[] buffer = BufferPool.Rent(1024);
+            byte[] buffer = BufferPool.Rent(AcnPacket.GetByteCount(packet, tcpTransport: false));
             try
             {
                 int length;
-                using (MemoryStream stream = new MemoryStream(buffer, 0, buffer.Length, true, true))
+                using (MemoryStream stream = new MemoryStream(buffer, 0, buffer.Length, writable: true, publiclyVisible: true))
                 using (AcnBinaryWriter writer = new AcnBinaryWriter(stream))
                 {
                     AcnPacket.WritePacket(packet, writer);
