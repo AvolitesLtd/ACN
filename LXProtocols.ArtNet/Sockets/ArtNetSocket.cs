@@ -10,6 +10,7 @@ using LXProtocols.Acn.Sockets;
 using LXProtocols.ArtNet.Packets;
 using LXProtocols.ArtNet.IO;
 using LXProtocols.Acn;
+using System.Threading.Tasks;
 
 namespace LXProtocols.ArtNet.Sockets
 {
@@ -98,55 +99,72 @@ namespace LXProtocols.ArtNet.Sockets
             SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, 1);
             PortOpen = true;
 
-            StartRecieve();
+            // Start receiving in a separate Task as it is possible for the receive to happen
+            // synchronously if the network is SUPER busy
+            Task.Factory.StartNew(StartRecieve);
         }
 
         public void StartRecieve()
         {
             try
             {
+                IAsyncResult result;
                 EndPoint localPort = new IPEndPoint(IPAddress.Any, Port);
-                ArtNetRecieveData recieveState = new ArtNetRecieveData();
-                BeginReceiveFrom(recieveState.buffer,0,recieveState.bufferSize,SocketFlags.None,ref localPort,new AsyncCallback(OnRecieve),recieveState);
+                do
+                {
+                    ArtNetRecieveData recieveState = new ArtNetRecieveData();
+                    result = BeginReceiveFrom(recieveState.buffer,
+                                              offset: 0,
+                                              recieveState.bufferSize,
+                                              SocketFlags.None,
+                                              ref localPort,
+                                              new AsyncCallback(OnRecieve),
+                                              recieveState);
+                }
+                // If we completed synchronously, the callback already ran and did NOT re-arm;
+                // we loop and call BeginReceiveFrom again from this (shallower) stack frame.
+                while (result.CompletedSynchronously);
             }
             catch (Exception ex)
             {
-                OnUnhandledException(new ApplicationException("An error ocurred while trying to start recieving ArtNet.",ex));
+                OnUnhandledException(new ApplicationException("An error occurred while trying to start receiving ArtNet.", ex));
             }
         }
 
-        private void OnRecieve(IAsyncResult state)
+        private void OnRecieve(IAsyncResult result)
         {
-            EndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any,0);
+            EndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
 
-            if (PortOpen)
+            if (!PortOpen)
+                return;
+
+            try
             {
-                try
+                ArtNetRecieveData recieveState = (ArtNetRecieveData)(result.AsyncState);
+
+                if (recieveState != null)
                 {
-                    ArtNetRecieveData recieveState = (ArtNetRecieveData)(state.AsyncState);
+                    recieveState.DataLength = EndReceiveFrom(result, ref remoteEndPoint);
 
-                    if (recieveState != null)
+                    //Protect against UDP loopback where we receive our own packets.
+                    if (LocalEndPoint != remoteEndPoint && recieveState.Valid)
                     {
-                        recieveState.DataLength = EndReceiveFrom(state, ref remoteEndPoint);
+                        LastPacket = DateTime.Now;
 
-                        //Protect against UDP loopback where we recieve our own packets.
-                        if (LocalEndPoint != remoteEndPoint && recieveState.Valid)
-                        {
-                            LastPacket = DateTime.Now;
-
-                            ProcessPacket((IPEndPoint) remoteEndPoint, ArtNetPacket.Create(recieveState));
-                        }
+                        ProcessPacket((IPEndPoint)remoteEndPoint, ArtNetPacket.Create(recieveState));
                     }
                 }
-                catch (Exception ex)
-                {
-                    OnUnhandledException(ex);
-                }
-                finally
-                {
-                    //Attempt to recieve another packet.
+            }
+            catch (Exception ex)
+            {
+                OnUnhandledException(ex);
+            }
+            finally
+            {
+                // If CompletedSynchronously is true, the CALLER of BeginReceiveFrom MUST handle the re-arm
+                if (!result.CompletedSynchronously)
+                    // We are safe to attempt to receive another packet.
                     StartRecieve();
-                }
             }
         }
 
