@@ -9,6 +9,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyVersion("3.0.9.2-buffers")]
-[assembly: AssemblyFileVersion("3.0.9.2-buffers")]
+[assembly: AssemblyVersion("3.0.9.2-avo2")]
+[assembly: AssemblyFileVersion("3.0.9.2-avo2")]
 
